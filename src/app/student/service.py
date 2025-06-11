@@ -11,7 +11,9 @@ from src.app.student.schema import (
     MarksUpdateSchema,
     StudentFilterSchema,
 )
-from fastapi import Depends, status, HTTPException
+
+from src.app.auth.schema import ResponseModel, ErrorResponseModel, ExistResponseModel
+from fastapi import Depends, status
 from sqlalchemy.orm import joinedload
 from fastapi.encoders import jsonable_encoder
 
@@ -38,10 +40,7 @@ async def create_or_update_student(
         # Find subjects that already exist
         duplicate_subjects = existing_subjects & new_subjects
         if duplicate_subjects:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{', '.join(duplicate_subjects)} already exist for this student",
-            )
+            return ErrorResponseModel(error=f"{', '.join(duplicate_subjects)} already exist for this student")
         
         # Add only new subject marks
         for mark in payload.subject_marks:
@@ -55,7 +54,7 @@ async def create_or_update_student(
         
         db.commit()
         db.refresh(existing_student)
-        return StudentSchema.from_orm(existing_student), "Student marks updated successfully"
+        return ResponseModel(data=StudentSchema.from_orm(existing_student), message="Student marks updated successfully")
 
     # Create new student if doesn't exist
     student_data = {
@@ -79,7 +78,7 @@ async def create_or_update_student(
     
     db.commit()
     db.refresh(new_student)
-    return StudentSchema.from_orm(new_student), "Student created successfully"
+    return ResponseModel(data=StudentSchema.from_orm(new_student), message="Student created successfully")
 
 
 async def update_student(student_id: int, payload: StudentUpdateSchema, db: Session = Depends(get_db)):
@@ -92,7 +91,7 @@ async def update_student(student_id: int, payload: StudentUpdateSchema, db: Sess
     )
 
     if not existing:
-        return {"message": "Student not found"}, status.HTTP_404_NOT_FOUND
+        return ErrorResponseModel(error="Student not found")
     existing_marks = {mark.id: mark for mark in existing.subject_marks if mark.id is not None}
     
     updated_marks = []
@@ -113,8 +112,7 @@ async def update_student(student_id: int, payload: StudentUpdateSchema, db: Sess
     
     db.commit()
     db.refresh(existing)
-    
-    return StudentSchema.from_orm(existing), "Student updated successfully"
+    return ResponseModel(data=StudentSchema.from_orm(existing), message="Student updated successfully")
 
 
 async def get_all_student(db: Session = Depends(get_db), search: str = None, is_pagination: bool = True, limit: int = 10, skip: int = 0):
@@ -127,11 +125,10 @@ async def get_all_student(db: Session = Depends(get_db), search: str = None, is_
         query = query.limit(limit).offset(skip)  
     students = query.all()
     total = query.count()
-    result = {
+    return ResponseModel(data={
         "students": [StudentSchema.from_orm(student) for student in students],
         "total": total
-    }
-    return result
+    }, message="Students fetched successfully")
 
 
 async def get_student_by_id(student_id: int, db: Session = Depends(get_db)):
@@ -142,17 +139,17 @@ async def get_student_by_id(student_id: int, db: Session = Depends(get_db)):
         .first()
     )
     if not student:
-        return {"message": "Student not found"}, status.HTTP_404_NOT_FOUND
-    return StudentSchema.from_orm(student)
+        return ErrorResponseModel(error="Student not found")
+    return ResponseModel(data=StudentSchema.from_orm(student), message="Student fetched successfully")
 
 
 async def delete_student(student_id: int, db: Session = Depends(get_db)):
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
-        return {"message": "Student not found"}, status.HTTP_404_NOT_FOUND
+        return ErrorResponseModel(error="Student not found")
     db.delete(student)
     db.commit()
-    return {"message": "Student deleted successfully"}, status.HTTP_200_OK
+    return ResponseModel(data={"message": "Student deleted successfully"}, message="Student deleted successfully")
 
 
 async def add_mark(payload: MarksCreateSchema, db: Session = Depends(get_db)):
@@ -163,30 +160,30 @@ async def add_mark(payload: MarksCreateSchema, db: Session = Depends(get_db)):
         mark.teacher_id = payload.teacher_id
         db.commit()
         db.refresh(mark)
-        return MarksSchema.from_orm(mark), "Mark updated successfully"
+        return ResponseModel(data=MarksSchema.from_orm(mark), message="Mark updated successfully")
 
     new_mark = SubjectMark(**payload.dict())
     db.add(new_mark)
     db.commit()
     db.refresh(new_mark)
-    return MarksSchema.from_orm(new_mark), "Mark created successfully"
+    return ResponseModel(data=MarksSchema.from_orm(new_mark), message="Mark created successfully")
 
 async def update_mark(mark_id: int, payload: MarksUpdateSchema, db: Session = Depends(get_db)):
     mark = db.query(SubjectMark).filter(SubjectMark.id == mark_id).first()
     if not mark:
-        return {"message": "Mark not found"}, status.HTTP_404_NOT_FOUND
+        return ErrorResponseModel(error="Mark not found")
     mark.mark = payload.mark
     mark.subject_name = payload.subject_name
     mark.teacher_id = payload.teacher_id
     db.commit()
     db.refresh(mark)
-    return MarksSchema.from_orm(mark), "Mark updated successfully"
+    return ResponseModel(data=MarksSchema.from_orm(mark), message="Mark updated successfully")
 
 
 async def delete_mark_by_id(student_id: int, mark_id: int, db: Session = Depends(get_db)):
     mark = db.query(SubjectMark).filter(SubjectMark.id == mark_id, SubjectMark.student_id == student_id).first()
     if not mark:
-        return {"message": "Mark not found"}, status.HTTP_404_NOT_FOUND
+        return ErrorResponseModel(error="Mark not found")
     db.delete(mark)
     db.commit()
-    return {"message": "Mark deleted successfully"}, status.HTTP_200_OK
+    return ResponseModel(data={"message": "Mark deleted successfully"}, message="Mark deleted successfully")

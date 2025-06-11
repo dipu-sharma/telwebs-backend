@@ -1,6 +1,8 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
 import enum
+from datetime import datetime
+from typing import Any, Dict, Optional, List
+from fastapi import status
 
 class RoleEnum(str, enum.Enum):
     student = "student"
@@ -45,3 +47,35 @@ class RegisterSchema(BaseModel):
             "confirm_password": "confirm_password",
             "role": "student"
         }
+
+
+
+class ResponseModel(BaseModel):
+    """
+    Base Response Model
+    """
+    data: Any = {}
+    status_code: int = status.HTTP_200_OK
+    success: bool = True
+    message: str = 'Request handled successfully'
+    changes: List[str] = []
+
+
+class ErrorResponseModel(BaseModel):
+    """
+    Base Error Model
+    """
+    error: Any = {}
+    status_code: int = status.HTTP_400_BAD_REQUEST
+    success: bool = False
+    message: str = 'Request could not be processed'
+
+
+class ExistResponseModel(BaseModel):
+    """
+    Existing Record Show
+    """
+    data: Any = {}
+    status_code: int = status.HTTP_226_IM_USED
+    success: bool = True
+    message: str = None

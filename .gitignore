@@ -1,8 +1,18 @@
 venv/
 test.db
+.pytest_cache/
 
 *.__pycache__/
 
 *.env
 
 *.log
+
+conftest.py
+tests/
+pytest.ini
+setup.py
+.coverage
+*.pyc 
+SOURCES.txt
+.egg-info
