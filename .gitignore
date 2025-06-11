@@ -1,13 +1,14 @@
 venv/
 test.db
 .pytest_cache/
+.pytest_cache/
 
-*.__pycache__/
+.__pycache__
 
 *.env
 
 *.log
-
+*.__pycache__/
 conftest.py
 tests/
 pytest.ini

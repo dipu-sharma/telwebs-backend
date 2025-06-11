@@ -1,8 +1,0 @@
-Metadata-Version: 2.4
-Name: assignment
-Version: 0.1
-Requires-Dist: fastapi
-Requires-Dist: sqlalchemy
-Requires-Dist: pytest
-Requires-Dist: pytest-cov
-Dynamic: requires-dist
