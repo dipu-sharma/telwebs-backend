@@ -21,7 +21,6 @@ from fastapi.encoders import jsonable_encoder
 async def create_or_update_student(
     payload: StudentCreateSchema, db: Session = Depends(get_db)
 ):
-    # First check if student with same name and teacher exists
     existing_student = (
         db.query(Student)
         .options(joinedload(Student.subject_marks))
@@ -32,57 +31,66 @@ async def create_or_update_student(
         .first()
     )
 
-    if existing_student:
-        # Check each subject mark to prevent duplicates
-        existing_subjects = {mark.subject_name for mark in existing_student.subject_marks}
-        new_subjects = {mark.subject_name for mark in payload.subject_marks}
-        
-        # Find subjects that already exist
-        duplicate_subjects = existing_subjects & new_subjects
-        if duplicate_subjects:
-            return ErrorResponseModel(error=f"{', '.join(duplicate_subjects)} already exist for this student")
-        
-        # Add only new subject marks
-        for mark in payload.subject_marks:
-            new_mark = SubjectMark(
-                mark=mark.mark,
-                subject_name=mark.subject_name,
-                student_id=existing_student.id,
-                teacher_id=existing_student.teacher_id
-            )
-            existing_student.subject_marks.append(new_mark)
+    if not existing_student:
+        new_student = Student(
+            student_name=payload.student_name,
+            teacher_id=payload.teacher_id
+        )
+        db.add(new_student)
+        db.flush()
+        db.bulk_insert_mappings(
+            SubjectMark,
+            [{
+                'mark': mark.mark,
+                'subject_name': mark.subject_name,
+                'student_id': new_student.id,
+                'teacher_id': new_student.teacher_id
+            } for mark in payload.subject_marks]
+        )
         
         db.commit()
-        db.refresh(existing_student)
-        return ResponseModel(data=StudentSchema.from_orm(existing_student), message="Student marks updated successfully")
+        db.refresh(new_student)
+        return ResponseModel(
+            data=StudentSchema.from_orm(new_student),
+            message="Student created successfully"
+        )
 
-    # Create new student if doesn't exist
-    student_data = {
-        "student_name": payload.student_name,
-        "teacher_id": payload.teacher_id
+    existing_marks = {
+        mark.subject_name: mark for mark in existing_student.subject_marks
     }
     
-    new_student = Student(**student_data)
-    db.add(new_student)
-    db.flush()  # Get the new student ID
-    
-    # Add all subject marks
+    marks_to_add = []
+    updated = False
+
     for mark in payload.subject_marks:
-        new_mark = SubjectMark(
-            mark=mark.mark,
-            subject_name=mark.subject_name,
-            student_id=new_student.id,
-            teacher_id=new_student.teacher_id
-        )
-        db.add(new_mark)
+        if mark.subject_name in existing_marks:
+            existing_mark = existing_marks[mark.subject_name]
+            existing_mark.mark += mark.mark
+            db.add(existing_mark)
+            updated = True
+        else:
+            marks_to_add.append({
+                'mark': mark.mark,
+                'subject_name': mark.subject_name,
+                'student_id': existing_student.id,
+                'teacher_id': existing_student.teacher_id
+            })
+
+    if marks_to_add:
+        db.bulk_insert_mappings(SubjectMark, marks_to_add)
+        updated = True
+
+    if updated:
+        db.commit()
+        db.refresh(existing_student)
     
-    db.commit()
-    db.refresh(new_student)
-    return ResponseModel(data=StudentSchema.from_orm(new_student), message="Student created successfully")
+    return ResponseModel(
+        data=StudentSchema.from_orm(existing_student),
+        message="Student marks updated successfully"
+    )
 
 
 async def update_student(student_id: int, payload: StudentUpdateSchema, db: Session = Depends(get_db)):
-    # Load the student with their marks in a single query
     existing = (
         db.query(Student)
         .options(joinedload(Student.subject_marks))
@@ -98,8 +106,10 @@ async def update_student(student_id: int, payload: StudentUpdateSchema, db: Sess
     for mark_data in payload.subject_marks:
         if mark_data.id in existing_marks:
             existing_mark = existing_marks[mark_data.id]
-            existing_mark.mark = mark_data.mark
+            existing_mark.mark = mark_data.mark + existing_mark.mark
             existing_mark.subject_name = mark_data.subject_name
+            db.add(existing_mark)
+            updated_marks.append(existing_mark)
         else:
             new_mark = SubjectMark(
                 mark=mark_data.mark,
